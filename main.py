@@ -87,14 +87,35 @@ def main():
                 cv2.putText(frame, f"Dist: {z_dist:.2f}m", 
                             (int(corners[i][0][0][0]), int(corners[i][0][0][1]) - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                try:
+                    # Pitch (rotation around X)
+                    pitch_rad = np.arcsin(-R[2, 0])
+                    
+                    # Yaw (rotation around Y, most important for steering)
+                    yaw_rad = np.arctan2(R[1, 0], R[0, 0])
+                    
+                    # Roll (rotation around Z)
+                    roll_rad = np.arctan2(R[2, 1], R[2, 2])
+                    
+                    # Convert to Degrees
+                    yaw_degrees = np.degrees(yaw_rad)
+                    pitch_degrees = np.degrees(pitch_rad)
+                    roll_degrees = np.degrees(roll_rad)
+                    
+                    print(f"Yaw Angle (Horizontal Steering): {yaw_degrees:.2f} degrees")
+                    print(f"Pitch Angle (Vertical Tilt): {pitch_degrees:.2f} degrees")
+                    print(f"Roll Angle (Camera Twist): {roll_degrees:.2f} degrees")
+                    
+                except ValueError:
+                    print("Error in Euler angle calculation (likely due to gimbal lock at 90 degrees).")
                 
         cv2.imshow("ArUco Pose Estimation", frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-        cap.release()
-        cv2.destroyAllWindows()      
+    cap.release()
+    cv2.destroyAllWindows()      
 
 
 
