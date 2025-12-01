@@ -1,13 +1,31 @@
 import cv2
 import numpy as np
 import driver
+import os
+import time
 
-
+CALIB_FILE = 'camera_params.npz'
 KP_YAW = 2.0          
 YAW_TOLERANCE = 3.0
 TURN_ANGLE = 30.0
 SEGMENT_DISTANCE = 0.24
-
+def load_calibration_parameters():
+    """Loads camera matrix and distortion coefficients from the .npz file."""
+    if not os.path.exists(CALIB_FILE):
+        print(f" ERROR: Calibration file '{CALIB_FILE}' not found.")
+        print("Please run the calibration script first!")
+        # Use dummy values as a fallback to avoid crash, but performance will be poor
+        return None, None
+    
+    try:
+        with np.load(CALIB_FILE) as data:
+            camera_matrix = data['cameraMatrix']
+            dist_coeffs = data['distCoeffs']
+        print(f"✅ Calibration data loaded from {CALIB_FILE}.")
+        return camera_matrix, dist_coeffs
+    except Exception as e:
+        print(f"❌ ERROR loading calibration data: {e}")
+        return None, None
 def get_pose_data(frame, dictionary, parameters, camera_matrix, dist_coeffs, marker_size):
     """Detects marker, estimates pose, and extracts Yaw, Z-distance."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
