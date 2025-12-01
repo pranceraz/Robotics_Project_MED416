@@ -1,12 +1,3 @@
-1 of 9,164
-(no subject)
-Inbox
-Arnav Yadavilli <ay603@snu.edu.in>
-	
-1:48 PM (0 minutes ago)
-	
-	
-to me
 import cv2
 import numpy as np
 import driver
