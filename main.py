@@ -3,7 +3,7 @@ import numpy as np
 
 
 def main():
-    dictionary  = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)# check later
+    dictionary  = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_250)# check later
 
     #parameters = cv2.aruco.DetectorParameters()
     MARKER_SIZE = 0.05
