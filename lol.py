@@ -1,5 +1,5 @@
 '''
-    Headless ArUco Follower (Distance Only)
+    Trigger-Based ArUco Follower
     © 2025 Arnav Yadavilli. All rights reserved.
 '''
 import cv2
@@ -30,22 +30,56 @@ PINS = [
 for pin in PINS:
     GPIO.setup(pin, GPIO.OUT)
 
-def forward():
-    """Moves robot forward."""
+# --- TIME-BASED MOTOR FUNCTIONS ---
+
+def forward(duration):
+    """Moves forward for 'duration' seconds, then stops."""
+    # Left Forward
     GPIO.output(LEFT_REAR_A, GPIO.LOW); GPIO.output(LEFT_REAR_B, GPIO.HIGH)
     GPIO.output(LEFT_FRONT_A, GPIO.LOW); GPIO.output(LEFT_FRONT_B, GPIO.HIGH)
+    # Right Forward
     GPIO.output(RIGHT_REAR_A, GPIO.HIGH); GPIO.output(RIGHT_REAR_B, GPIO.LOW)
     GPIO.output(RIGHT_FRONT_A, GPIO.HIGH); GPIO.output(RIGHT_FRONT_B, GPIO.LOW)
+    
+    time.sleep(duration)
+    stop()
 
-def backward():
-    """Moves robot backward."""
+def backward(duration):
+    """Moves backward for 'duration' seconds, then stops."""
+    # Left Backward
     GPIO.output(LEFT_REAR_A, GPIO.HIGH); GPIO.output(LEFT_REAR_B, GPIO.LOW)
     GPIO.output(LEFT_FRONT_A, GPIO.HIGH); GPIO.output(LEFT_FRONT_B, GPIO.LOW)
+    # Right Backward
     GPIO.output(RIGHT_REAR_A, GPIO.LOW); GPIO.output(RIGHT_REAR_B, GPIO.HIGH)
     GPIO.output(RIGHT_FRONT_A, GPIO.LOW); GPIO.output(RIGHT_FRONT_B, GPIO.HIGH)
 
+    time.sleep(duration)
+    stop()
+
+def right(duration):
+    """Spins Right for 'duration' seconds, then stops."""
+    # Left Forward / Right Backward
+    GPIO.output(LEFT_REAR_A, GPIO.LOW); GPIO.output(LEFT_REAR_B, GPIO.HIGH)
+    GPIO.output(LEFT_FRONT_A, GPIO.LOW); GPIO.output(LEFT_FRONT_B, GPIO.HIGH)
+    GPIO.output(RIGHT_REAR_A, GPIO.LOW); GPIO.output(RIGHT_REAR_B, GPIO.HIGH)
+    GPIO.output(RIGHT_FRONT_A, GPIO.LOW); GPIO.output(RIGHT_FRONT_B, GPIO.HIGH)
+
+    time.sleep(duration)
+    stop()
+
+def left(duration):
+    """Spins Left for 'duration' seconds, then stops."""
+    # Left Backward / Right Forward
+    GPIO.output(LEFT_REAR_A, GPIO.HIGH); GPIO.output(LEFT_REAR_B, GPIO.LOW)
+    GPIO.output(LEFT_FRONT_A, GPIO.HIGH); GPIO.output(LEFT_FRONT_B, GPIO.LOW)
+    GPIO.output(RIGHT_REAR_A, GPIO.HIGH); GPIO.output(RIGHT_REAR_B, GPIO.LOW)
+    GPIO.output(RIGHT_FRONT_A, GPIO.HIGH); GPIO.output(RIGHT_FRONT_B, GPIO.LOW)
+
+    time.sleep(duration)
+    stop()
+
 def stop():
-    """Stops all motors."""
+    """Stops all motors immediately."""
     for pin in PINS:
         GPIO.output(pin, GPIO.LOW)
 
@@ -54,21 +88,10 @@ def stop():
 # ==========================================
 
 def get_euler_angles(rvec):
-    """
-    Converts Rotation Vector to Euler Angles (Pitch, Yaw, Roll)
-    Returns degrees for easier reading.
-    """
-    # Convert rvec to Rotation Matrix
     R, _ = cv2.Rodrigues(rvec)
-    
-    # Calculate angles (assuming standard camera coordinate system)
-    # Pitch (Rotation around X)
     pitch = math.atan2(R[2, 1], R[2, 2])
-    # Yaw (Rotation around Y)
     yaw = math.asin(-R[2, 0])
-    # Roll (Rotation around Z)
     roll = math.atan2(R[1, 0], R[0, 0])
-    
     return np.degrees(pitch), np.degrees(yaw), np.degrees(roll)
 
 # ==========================================
@@ -76,84 +99,105 @@ def get_euler_angles(rvec):
 # ==========================================
 
 def main():
-    # Camera Matrix (Approximate)
     camera_matrix = np.array([[600, 0, 320], [0, 600, 240], [0, 0, 1]], dtype=float)
     dist_coeffs = np.zeros((4, 1)) 
-    MARKER_SIZE = 0.05 # 5cm
+    MARKER_SIZE = 0.05 
 
-    # ArUco Setup
     aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_250)
     parameters = cv2.aruco.DetectorParameters_create()
     
-    # Init Camera (Headless)
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-    # Distance Settings
-    DIST_TARGET = 0.50 # Meters
-    BUFFER = 0.05
+    # --- TUNING PARAMETERS ---
+    TARGET_DIST = 0.50   # Meters
+    DIST_BUFFER = 0.05   
+    ANGLE_BUFFER = 8.0   
+    
+    STEP_TURN = 0.1      
+    STEP_MOVE = 0.2      
 
-    print("--- SYSTEM START ---")
-    print("Initializing Sensor Fusion... [OK]")
-    print("Running headless. Press Ctrl+C to stop.")
+    print("--- SYSTEM BOOT COMPLETE ---")
+    print("STANDBY: Waiting for visual confirmation (Show Marker)...")
 
+    # ==========================================
+    # PHASE 1: WAIT FOR START SIGNAL
+    # ==========================================
     try:
         while True:
             ret, frame = cap.read()
-            if not ret:
-                print("Error: Camera not reading.")
-                time.sleep(1)
-                continue
+            if not ret: continue
+            
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            corners, ids, rejected = cv2.aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
+
+            if ids is not None:
+                print("\n[CONFIRMED] Marker Detected.")
+                print("Engaging Main Drive in 2 seconds...")
+                time.sleep(2) # Give you time to put the marker in position
+                break # Exit the wait loop and start the main loop
+            
+            # Reduce CPU usage while waiting
+            time.sleep(0.1)
+
+        # ==========================================
+        # PHASE 2: MAIN TRACKING LOOP
+        # ==========================================
+        print("--- MISSION STARTED ---")
+        
+        while True:
+            # Flush buffer
+            for _ in range(2): cap.grab()
+            
+            ret, frame = cap.read()
+            if not ret: continue
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             corners, ids, rejected = cv2.aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
 
             if ids is not None:
-                # Get Pose
                 rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(corners, MARKER_SIZE, camera_matrix, dist_coeffs)
-                
-                # Extract data for Marker 0
                 rvec = rvecs[0]
                 tvec = tvecs[0]
                 
-                # --- FAKE CALCULATIONS (The "Act" part) ---
                 pitch, yaw, roll = get_euler_angles(rvec)
+                dist = tvec[0][2]
                 
-                # Print sophisticated log to console
-                sys.stdout.write(f"\r[TGT ACQUIRED] Yaw:{yaw:6.2f}° | Pitch:{pitch:6.2f}° | Compensating Trajectory...")
-                sys.stdout.flush()
+                sys.stdout.write(f"\rYaw: {yaw:.1f}° | Dist: {dist:.2f}m | Action: ")
 
-                # --- REAL HARDCODED LOGIC (Distance Only) ---
-                z_dist = tvec[0][2]
-
-                if z_dist > (DIST_TARGET + BUFFER):
-                    # Too far -> Move Forward
-                    forward()
-                elif z_dist < (DIST_TARGET - BUFFER):
-                    # Too close -> Move Backward
-                    backward()
+                # LOGIC
+                if yaw > ANGLE_BUFFER:
+                    sys.stdout.write("CORRECTING RIGHT  ")
+                    right(STEP_TURN)
+                
+                elif yaw < -ANGLE_BUFFER:
+                    sys.stdout.write("CORRECTING LEFT   ")
+                    left(STEP_TURN)
+                
                 else:
-                    # Just right -> Stop
-                    stop()
+                    if dist > (TARGET_DIST + DIST_BUFFER):
+                        sys.stdout.write("APPROACHING       ")
+                        forward(STEP_MOVE)
+                    elif dist < (TARGET_DIST - DIST_BUFFER):
+                        sys.stdout.write("BACKING UP        ")
+                        backward(STEP_MOVE)
+                    else:
+                        sys.stdout.write("HOLDING POSITION  ")
+                        stop()
+                sys.stdout.flush()
 
             else:
-                # No marker found
                 stop()
-                sys.stdout.write("\r[SCANNING] No signal...                                        ")
+                sys.stdout.write("\r[LOST SIGNAL] Searching...               ")
                 sys.stdout.flush()
 
-            # Slight delay to prevent CPU overload since we aren't waiting for GUI
-            time.sleep(0.01)
-
     except KeyboardInterrupt:
-        print("\n\n--- MANUAL OVERRIDE ---")
-        print("Stopping motors...")
+        print("\nStopping...")
     finally:
         stop()
         cap.release()
         GPIO.cleanup()
-        print("System shutdown complete.")
 
 if __name__ == "__main__":
     main()
